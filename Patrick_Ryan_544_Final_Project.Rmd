@@ -1,0 +1,2766 @@
+---
+title: "Homicide Database (1980 - 2014) EDA"
+author: "Patrick Ryan"
+date: "April 29, 2018"
+output: "html_document"
+html_document: default
+pdf_document: default
+---
+
+
+
+# Libraries:
+
+
+OK, for starters, lets import some libraries:
+
+```{r setup}
+
+library(sampling)
+library("ggplot2")
+library("RColorBrewer")
+library("ggthemes")
+library("ggrepel")
+library("plotly")
+Sys.setenv("plotly_username"='patryan117')
+Sys.setenv("plotly_api_key"='sU5DfakuvEH0BEVqQE5e')
+library("chron")
+library("e1071") 
+library("lubridate")
+library("xts")
+library("highcharter")
+library("maps")
+library("ggmap")
+library("leaflet")
+library("dplyr")
+
+getwd()
+
+data = read.csv(file="database.csv", header = TRUE)  
+names(data) <- tolower(names(data))
+
+df <- data.frame(data)
+suppressMessages(attach(df))
+options(warn=-1)
+
+head(df)
+
+```
+
+
+
+
+
+
+
+
+# 1.a) Introduction:
+
+
+"The Murder Accountability Project is the most complete database of homicides in the United States currently available. This dataset includes murders from the FBI's Supplementary Homicide Report from 1976 to (2014) and Freedom of Information Act data on more than 22,000 homicides that were not reported to the Justice Department. This dataset includes the age, race, sex, ethnicity of victims and perpetrators, in addition to the relationship between the victim and perpetrator and weapon used."
+
+
+OK, kinda a cool dataset to be working with here:  
+
+- This dataset contains 638,454 rows which detail invidual murders that have been collected between the years 1980 and 2014. 
+
+
+
+
+------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+# 1.b) Documentation and Column Summary:
+
+- Although documentation is sparse, I believe the various rows of the dataframe are as follows:
+
+- Record ID:  Column of row indexing for database.
+- agency.code:  The code for the agency reporting the murder.
+- agency.name:  The name of the agency reporting the murder.
+- agency.type:  The type of agency reporting the murder (state Police, Sheriff's Office, Tribal Police, etc.)
+- city:  The name of the city that the murder occoured in.
+- state:  The name of the state that the murder occoured in.
+- year:  The year that the murder occoured.
+- month  The month that the murder occoured in.
+- incident:  The cum. number of murders for this incident for the month of occourence.
+- crime.type:  The type of crime (Murder, Manslaughter, etc.)
+- crime.solved:  The status of the case (solved or unsolved)
+- victim.sex:  The sex of the murder victim.
+- victim.age:  The age of the murder victim
+- victim.race:  The race of the murder victim. (black, white, native american/ asian)
+- victim.ethnicity:  The ethnicity of the murder victim (hispanic, non-hispanic, unknown)
+- perpetrator.sex:  The sex of the murder perpetrator.
+- perpetrator.age:  The age of the murder perpetrator.
+- perpetrator.race  The race of the murder perpetrator.
+- perpetrator.ethnicity:  The ethnicity of the murder perpetrator.
+- relationship:  The murderer's relationship to the victim.  (i.e. 'sister' indicates that a brother murdered their sister)
+- weapon:  The weapon used to commit the murder
+- victim.count:  The number of people murdered during the crime incident.
+- perpetrator.count:  The number of people guilty during the crime incident.
+- record.source:  The publishing source of the incident (FBI versus FOIA requests)
+
+
+------------------------------------------------------------------------------------------------------------------------------------
+
+
+# 1.c) Caveats and Notes on Particular Columns:
+
+# i) victim.count and perpetrator.count
+
+Everything appears fairly self explainatory, however two columns in particular I think should be addressed upfront (victim.count and perpetrator.count).  As you can see in the basic EDA above, a large majority of the figures in both of these colums are set to zero, even in solved cases. which doesnt really makes sense (how can you have a murder without a victim or a perpetrator)
+
+Personally, I think the most likley explaination for this is that some offices must have different sets of paperwork for murders and multiple murders.  (later, to remedy to this, I will limit the analysis to single murders (or murders with a perpetrator or victim count of 0)).
+
+Another thing that bugs me about a these categories, is the loss of information that occours when bundling a tripple homicide.  Had these indicdents been reported as individual rows, we could have maintained information regarding the age, gender and race/ethnicity of the victim(s) and or the perpetrator(s).  Instead, all this information appears to have been lost.
+
+# ii)  crime.solved:
+
+Naturally, we should expect solved crimes to have significantly more information (especially surrounding the perpetrator).  We wont seek to only investigate solved murders exclusively, however we should definatly expect the solved cases to contain more accurate data.
+
+
+# iii) victim.age and perpetrator.age:
+
+In either category we will see very siginficant extremes of 0 and 99/100 in the age category.  
+
+My interpretation of these extreeme values in the victim column is that 0 is a stand-in value for infants suspected to be below the age of 1 years old (which may have been born without a formal birth certificate).  Individuals aged 99/998 are likley the revers; i.e. individuals that appear elderly, but an exact age cannot be determined. ()
+
+In the perpetrator.age column, it looks fairly clear that a value of 0 is meant to be associated with an unknown perpetrator age.
+
+## iv) city:
+
+The city column appears to actually contain the county that a particular city resides in.  (e.g. Cook County is the name paried with murders that have occoured in Chicago.)
+
+
+
+-----------------------------------------------------------------------------------------------------------------------------------
+
+
+## 1.d) Preliminary Observations:
+
+- As shown above, each year contains an average of 18,241 rows (i.e. murders) 
+
+- Information for this dataset was supplied from two sources, the FBI (The United States Federal Bureau of Investigation) and FOIA requests (information requested by way of United States Fredom of Information Act of 1967)
+
+- Some major racial categories (such as Indian Americans, i.e. from the subcontinent of India), are not clearly represented in the American class system, though ancillary information may guide our understanding of how non-dominant races have historically been classified in US censuses.
+
+- A large marjority (96.58% of the data) is provided by the FBI.
+
+- Firearms seem to be significantly well represented as the main method of murder.
+
+- A large majority of the crimes in this dataset have been solved (70.19%), compared against unsolved murders (29.80%).
+
+- A large majority (98.57%) of the dataset is "Murder or Manslaughter", rather than "Manslaughter by Neglegance".
+
+- About half of the victims are black 46.97%, while the other's are white/hispanic (49.71%), with the remaining categories being Native American/Alaska (.7153%) and Unknown (1.0456%).  As expected, it is uncommon to have a murder with an unknown victim.race, since the presence of a body is the primary evidence that a murder has taken place, (and most bodies can have their race identified)
+
+- In most murders, the relationship is unknown, although this category is significantly affected by the count of unsolved murderrs in the raw data. 
+
+
+
+
+
+
+
+## 2) Feature Engineering:
+
+Before we delve into deeper analysis, I think there's a real benifit in pursuing some detailed feature engineering.
+
+## i) general.weapon.type:
+
+This is a rare instance where the provided data is too specific for all uses cases. In the raw data, several weapon type categories (e.g. fun, handcun, rifle, shotgun, firearm) could all be designated as a subset of firearm weapons.  Although this mapping is not fully required for analysis, creating a column for general.weapon.type now will help to simplify some of our visualizations by reducing the number of plotted categories.
+
+## ii) detailed.relationship:
+
+Using the relatinoship category, we can easily broaden the relationship between groups.  I.e. for a relationship of "brother", and a perpetrator.sex of male and victim.sex of male, we can retitle a new column (detailed.relationship) to say something like "male killed by brother".
+
+## iii) state.abb
+
+An abbreviated version of each state's name.
+
+
+## iii)  city.state
+
+Appending/pasting the city and state category in the form "city"" + ", " + "state" will allow us to look at murder cases specific to each city area, (which will be expecially helpful with the US's major metro regions).
+
+
+# 2.a) Add New General Weapon Column
+
+``` {r mutate new general.weapon column}
+table(df$weapon)
+
+
+df <- df%>% 
+  mutate(general.weapon= case_when(
+    
+          # IMMEDIATE FAMILY (RELATIONSHIP INFERRS GENDER OF VICTIM)   
+    
+          .$weapon=="Shotgun" ~ "Firearm",
+          .$weapon=="Firearm" ~ "Firearm",
+          .$weapon=="Gun" ~ "Firearm",
+          .$weapon=="Handgun" ~ "Firearm",
+          .$weapon=="Rifle" ~ "Firearm",
+          TRUE~(as.character(.$weapon))))
+
+table(df$general.weapon)
+```
+
+# 2.b) Add New General Race Column:
+
+``` {r mutate new general.race column}
+
+
+df <- df%>% 
+  mutate(victim.general.race= case_when(
+          .$victim.race=="White" & .$victim.ethnicity == "Hispanic" ~ "White (Hispanic)",
+          .$victim.race=="White" & .$victim.ethnicity == "Hispanic" ~ "White",
+          .$victim.race=="White" & .$victim.ethnicity == "Unknown" ~ "White (Unknown)",
+          TRUE~(as.character(.$victim.race))))
+
+
+df <- df%>% 
+  mutate(perpetrator.general.race= case_when(
+          .$perpetrator.race=="White" & .$perpetrator.ethnicity == "Hispanic" ~ "White (Hispanic)",
+          .$perpetrator.race=="White" & .$perpetrator.ethnicity == "Hispanic" ~ "White",
+          .$perpetrator.race=="White" & .$perpetrator.ethnicity == "Unknown" ~ "White (Unknown)",
+          TRUE~(as.character(.$perpetrator.race))))
+
+
+```
+
+
+
+
+# 2.c) Add New Detailed Relationship Column
+
+
+```{r mutate new detailed.relationship column}
+
+df <- df%>% 
+  mutate(detailed.relationship = case_when(
+    
+          # IMMEDIATE FAMILY   
+    
+          .$relationship=="Brother" & .$perpetrator.sex =="Male" ~ "Male Killed by Brother",
+          .$relationship=="Brother" & .$perpetrator.sex =="Female" ~ "Male Killed by Sister",
+          .$relationship=="Sister" &  .$perpetrator.sex =="Female" ~ "Female Killed by Sister",
+          .$relationship=="Sister" &  .$perpetrator.sex =="Male" ~ "Female Killed by Brother",
+          .$relationship=="Mother" &  .$perpetrator.sex =="Male" ~ "Female Killed by Son",
+          .$relationship=="Mother" &  .$perpetrator.sex =="Female" ~ "Female Killed by Daughter",
+          .$relationship=="Son" &  .$perpetrator.sex =="Female" ~ "Male Killed by Mother",
+          .$relationship=="Son" &  .$perpetrator.sex =="Male" ~ "Male Killed by Father",
+          .$relationship=="Daughter" & .$perpetrator.sex =="Female" ~ "Female Killed by Mother",
+          .$relationship=="Daughter" & .$perpetrator.sex =="Male" ~ "Female Killed by Father",
+          .$relationship=="Wife" & .$perpetrator.sex =="Male" ~ "Female Killed by Husband",
+          .$relationship=="Wife" & .$perpetrator.sex =="Female" ~ "Female Killed by Wife",
+          .$relationship=="Husband" & .$perpetrator.sex =="Female" ~ "Male Killed by Wife",
+          .$relationship=="Husband" & .$perpetrator.sex =="Male" ~ "Male Killed by Husband",
+          .$relationship=="Father" & .$perpetrator.sex =="Female" ~ "Male Killed by Daughter",
+          .$relationship=="Father" & .$perpetrator.sex =="Male" ~ "Male Killed by Son",
+          
+          # ACQUAINTANCE 
+          
+          .$relationship=="Acquaintance" & .$victim.sex == "Male" & .$perpetrator.sex =="Male" ~ "Male Killed by Male Acquaintance",
+          .$relationship=="Acquaintance" & .$victim.sex == "Male" & .$perpetrator.sex =="Female"  ~ "Male Killed by Female Acquaintance",
+          .$relationship=="Acquaintance" & .$victim.sex == "Female" & .$perpetrator.sex =="Female" ~ "Female Killed by Female Acquaintance",
+          .$relationship=="Acquaintance" & .$victim.sex == "Female" & .$perpetrator.sex =="Male"~ "Female Killed by Male Acquaintance",
+
+          # WIFE
+          
+          .$relationship=="Wife" & .$victim.sex == "Female" & .$perpetrator.sex =="Male" ~ "Wife Killed by Husband",
+          .$relationship=="Wife" & .$victim.sex == "Female" & .$perpetrator.sex =="Female" ~ "Wife Killed by Wife",
+          
+          #FRIEND
+          
+          .$relationship=="Friend" & .$victim.sex == "Female" & .$perpetrator.sex =="Male"   ~ "Female Killed by Male Friend",
+          .$relationship=="Friend" & .$victim.sex == "Female" & .$perpetrator.sex =="Female"   ~ "Female Killed by Female Friend",
+          .$relationship=="Friend" & .$victim.sex == "Male" & .$perpetrator.sex =="Male"   ~ "Male Killed by Male Friend",
+          .$relationship=="Friend" & .$victim.sex == "Male" & .$perpetrator.sex =="Female"   ~ "Male Killed by Female Friend",
+        
+          # STRANGER
+          
+          .$relationship=="Stranger" & .$victim.sex == "Female" & .$perpetrator.sex =="Male"   ~ "Female Killed by Male Stranger",
+          .$relationship=="Stranger" & .$victim.sex == "Female" & .$perpetrator.sex =="Female"   ~ "Female Killed by Female Stranger",
+          .$relationship=="Stranger" & .$victim.sex == "Male" & .$perpetrator.sex =="Male"   ~ "Male Killed by Male Stranger",
+          .$relationship=="Stranger" & .$victim.sex == "Male" & .$perpetrator.sex =="Female"   ~ "Male Killed by Female Stranger",
+          
+          # BOYFRIEND
+          
+          .$relationship=="Boyfriend" & .$victim.sex == "Male" & .$perpetrator.sex =="Female"   ~ "Male Killed by Girlfriend",
+          .$relationship=="Boyfriend" & .$victim.sex == "Male" & .$perpetrator.sex =="Male"   ~ "Male Killed by Boyfriend",
+         
+          # BOYFRIEND/GIRLFRIEND
+          
+          .$relationship=="Boyfriend/Girlfriend" & .$victim.sex == "Female" & .$perpetrator.sex =="Male"   ~ "Female Killed by Boyfriend",
+          .$relationship=="Boyfriend/Girlfriend" & .$victim.sex == "Female" & .$perpetrator.sex =="Female"   ~ "Female Killed by Girlfriend",
+          .$relationship=="Boyfriend/Girlfriend" & .$victim.sex == "Male" & .$perpetrator.sex =="Male"   ~ "Male Killed by Boyfriend",
+          .$relationship=="Boyfriend/Girlfriend" & .$victim.sex == "Male" & .$perpetrator.sex =="Female"   ~ "Male Killed by Girlfriend",
+             
+          # Common-Law Husband      
+                  
+          .$relationship=="Common-Law Husband" & .$victim.sex == "Male" & .$perpetrator.sex =="Male"   ~ "Male Killed by Com-Law Husband",
+          .$relationship=="Common-Law Husband" & .$victim.sex == "Male" & .$perpetrator.sex =="Female"   ~ "Female Killed by Com-Law Wife",
+          
+          # Common-Law Wife
+          
+          .$relationship=="Common-Law Wife" & .$victim.sex == "Female" & .$perpetrator.sex =="Male"   ~ "Female Killed by Common-Law Husband",
+          .$relationship=="Common-Law Wife" & .$victim.sex == "Female" & .$perpetrator.sex =="Female"   ~ "Female Killed by Common-Law Wife",
+          
+          # Employee
+          
+          .$relationship=="Employee" & .$victim.sex == "Female" & .$perpetrator.sex =="Male"   ~ "Female Killed by Male Employer",
+          .$relationship=="Employee" & .$victim.sex == "Female" & .$perpetrator.sex =="Female"   ~ "Female Killed by Female Employer",
+          .$relationship=="Employee" & .$victim.sex == "Male" & .$perpetrator.sex =="Male"   ~ "Male Killed by Male Employer",
+          .$relationship=="Employee" & .$victim.sex == "Male" & .$perpetrator.sex =="Female"   ~ "Male Killed by Female Employer",
+          
+          # Employer
+          
+          .$relationship=="Employer" & .$victim.sex == "Female" & .$perpetrator.sex =="Male"   ~ "Female Killed by Male Employee",
+          .$relationship=="Employer" & .$victim.sex == "Female" & .$perpetrator.sex =="Female"   ~ "Female Killed by Female Employee",
+          .$relationship=="Employer" & .$victim.sex == "Male" & .$perpetrator.sex =="Male"   ~ "Male Killed by Male Employee",
+          .$relationship=="Employer" & .$victim.sex == "Male" & .$perpetrator.sex =="Female"   ~ "Male Killed by Female Employee",          
+          
+          # Ex-Husband
+          
+          .$relationship=="Ex-Husband" & .$victim.sex == "Male" & .$perpetrator.sex =="Female"   ~ "Male Killed by Ex-Wife",
+          .$relationship=="Ex-Husband" & .$victim.sex == "Male" & .$perpetrator.sex =="Male"   ~ "Male Killed by Ex-Husband",          
+          
+          # Ex-Wife
+          
+          .$relationship=="Ex-Wife" & .$victim.sex == "Female" & .$perpetrator.sex =="Male"   ~ "Female Killed by Ex-Husband",
+          .$relationship=="Ex-Wife" & .$victim.sex == "Female" & .$perpetrator.sex =="Female"   ~ "Female Killed by Ex-Wife",
+          
+          # Family
+        
+          .$relationship=="Family" & .$victim.sex == "Female" & .$perpetrator.sex =="Male"   ~ "Female Killed by Male Family Member",
+          .$relationship=="Family" & .$victim.sex == "Female" & .$perpetrator.sex =="Female"   ~ "Female Killed by Male Family Member",
+          .$relationship=="Family" & .$victim.sex == "Male" & .$perpetrator.sex =="Male"   ~ "Male Killed by Male Family Member",
+          .$relationship=="Family" & .$victim.sex == "Male" & .$perpetrator.sex =="Female"   ~ "Male Killed by Female Family Member",          
+           
+          # Friend
+          
+          .$relationship=="Friend" & .$victim.sex == "Female" & .$perpetrator.sex =="Male"   ~ "Female Killed by Male Friend",
+          .$relationship=="Friend" & .$victim.sex == "Female" & .$perpetrator.sex =="Female"   ~ "Female Killed by Male Friend",
+          .$relationship=="Friend" & .$victim.sex == "Male" & .$perpetrator.sex =="Male"   ~ "Male Killed by Male Friend",
+          .$relationship=="Friend" & .$victim.sex == "Male" & .$perpetrator.sex =="Female"   ~ "Male Killed by Female Friend",          
+          
+          # Girlfriend
+          
+          .$relationship=="Girlfriend" & .$victim.sex == "Female" & .$perpetrator.sex =="Male"   ~ "Female Killed by Boyfriend",
+          .$relationship=="Girlfriend" & .$victim.sex == "Female" & .$perpetrator.sex =="Female"   ~ "Female Killed by Girlfriend",
+         
+          # In-Law
+          
+          .$relationship=="In-Law" & .$victim.sex == "Female" & .$perpetrator.sex =="Male"   ~ "Female Killed by Father-In-Law",
+          .$relationship=="In-Law" & .$victim.sex == "Female" & .$perpetrator.sex =="Female"   ~ "Female Killed by Mother-In-Law",
+          .$relationship=="In-Law" & .$victim.sex == "Male" & .$perpetrator.sex =="Male"   ~ "Male Killed by Father-In-Law",
+          .$relationship=="In-Law" & .$victim.sex == "Male" & .$perpetrator.sex =="Female"   ~ "Male Killed by Mother-In-Law",          
+    
+          # Neighbor
+          
+          .$relationship=="Neighbor" & .$victim.sex == "Female" & .$perpetrator.sex =="Male"   ~ "Female Killed by Male Neighbor",
+          .$relationship=="Neighbor" & .$victim.sex == "Female" & .$perpetrator.sex =="Female"   ~ "Female Killed by Female Neighbor",
+          .$relationship=="Neighbor" & .$victim.sex == "Male" & .$perpetrator.sex =="Male"   ~ "Male Killed by Male Neighbor",
+          .$relationship=="Neighbor" & .$victim.sex == "Male" & .$perpetrator.sex =="Female"   ~ "Male Killed by Female Neighbor",          
+
+          # Stepdaughter
+          
+          .$relationship=="Stepdaughter" & .$victim.sex == "Female" & .$perpetrator.sex =="Male"   ~ "Female Killed by Stepfather",
+          .$relationship=="Stepdaughter" & .$victim.sex == "Female" & .$perpetrator.sex =="Female"   ~ "Female Killed by Stepmother",
+         
+          # Stepfather
+
+          .$relationship=="Stepfather" & .$victim.sex == "Male" & .$perpetrator.sex =="Female"   ~ "Male Killed by Stepdaughter",
+          .$relationship=="Stepfather" & .$victim.sex == "Male" & .$perpetrator.sex =="Male"   ~ "Male Killed by Stepson",
+         
+          # Stepmother
+         
+          .$relationship=="Stepmother" & .$victim.sex == "Female" & .$perpetrator.sex =="Female"   ~ "Female Killed by Stepdaughter",
+          .$relationship=="Stepmother" & .$victim.sex == "Female" & .$perpetrator.sex =="Male"   ~ "Female Killed by Stepson",
+         
+          # Stepson
+         
+          .$relationship=="Stepson" & .$victim.sex == "Male" & .$perpetrator.sex =="Female"   ~ "Male Killed by Stepmother",
+          .$relationship=="Stepson" & .$victim.sex == "Male" & .$perpetrator.sex =="Male"   ~ "Male Killed by Stepfather",
+         
+          # Stranger       
+         
+          .$relationship=="Stranger" & .$victim.sex == "Female" & .$perpetrator.sex =="Male"   ~ "Female Killed by Male Stranger",
+          .$relationship=="Stranger" & .$victim.sex == "Female" & .$perpetrator.sex =="Female"   ~ "Female Killed by Female Stranger",
+          .$relationship=="Stranger" & .$victim.sex == "Male" & .$perpetrator.sex =="Male"   ~ "Male Killed by Male Stranger",
+          .$relationship=="Stranger" & .$victim.sex == "Male" & .$perpetrator.sex =="Female"   ~ "Male Killed by Female Stranger",          
+          
+          TRUE~"UKN"))
+
+
+
+
+
+```
+
+
+
+# 2.d) Add New City + State Column
+
+
+```{r mutate new city.state column}
+
+
+
+
+df <- df%>% 
+  mutate(state.abb = case_when(
+
+          .$state=="Alabama"  ~ "AL",
+          .$state=="Alaska"  ~ "AK",
+          .$state=="Arizona"  ~ "AZ",
+          .$state=="Arkansas"  ~ "AR",
+          .$state=="California"  ~ "CA",
+          .$state=="Colorado"  ~ "CO",
+          .$state=="Connecticut"  ~ "CT",
+          .$state=="Delaware"  ~ "DE",
+          .$state=="District of Columbia" ~ "DC",
+          .$state=="Florida"  ~ "FL",                 
+          .$state=="Georgia"  ~ "GA",
+          .$state=="Hawaii"  ~ "HI",
+          .$state=="Idaho"  ~ "ID",
+          .$state=="Illinois"  ~ "IL",
+          .$state=="Indiana"  ~ "IN",
+          .$state=="Iowa"  ~ "IA",
+          .$state=="Kansas"  ~ "KS",
+          .$state=="Kentucky"  ~ "KY",
+          .$state=="Louisiana"  ~ "LA",
+          .$state=="Maine"  ~ "ME",
+          .$state=="Maryland"  ~ "MD",
+          .$state=="Massachusetts"  ~ "MA",                 
+          .$state=="Michigan"  ~ "MI",
+          .$state=="Minnesota"  ~ "MN",          
+          .$state=="Mississippi"  ~ "MS",
+          .$state=="Missouri"  ~ "MO",
+          .$state=="Montana"  ~ "MT",
+          .$state=="Nebraska"  ~ "NE",
+          .$state=="Nevada"  ~ "NV",
+          .$state=="New Hampshire"  ~ "NH",
+          .$state=="New Jersey"  ~ "NJ",
+          .$state=="New Mexico"  ~ "NM",
+          .$state=="New York"  ~ "NY",
+          .$state=="North Carolina"  ~ "NC",
+          .$state=="North Dakota"  ~ "ND",                 
+          .$state=="Ohio"  ~ "OH",
+          .$state=="Oklahoma"  ~ "OK",          
+          .$state=="Oregon"  ~ "OR",
+          .$state=="Pennsylvania"  ~ "PA",           
+          .$state=="Rhodes Island"  ~ "RI",
+          .$state=="Tennessee"  ~ "TN", 
+          .$state=="Texas"  ~ "TX",
+          .$state=="Utah"  ~ "UT",           
+          .$state=="South Carolina"  ~ "SC",
+          .$state=="South Dakota"  ~ "SD",           
+          .$state=="West Virginia"  ~ "WV",
+          .$state=="Wisconsin"  ~ "WI",           
+          .$state=="Wyoming"  ~ "WY",
+          .$state=="Vermont"  ~ "VT",           
+          .$state=="Virginia"  ~ "VA",
+          .$state=="Washington"  ~ "WA",            
+          TRUE~"ERROR"))
+
+
+# sort(table(df$city.state), decreasing=T)
+
+
+```
+
+
+
+
+
+```{r}
+
+df$city.state <- paste(as.character(df$city), ",", as.character(df$state.abb))
+        
+sort(table(df$city.state), decreasing=T)[1:50]
+
+
+```
+
+
+
+
+# 3.a) Data Cleansing:
+
+OK, now that we've looked a bit at the raw data, and introduced some new columns, lets try and seperate out the solved murders from unsolved murders.
+
+In theory the solved data should have a much higher quality of information associated with it, to check this out, i'll do a few things to cleanse the data: 
+
+- Remove all rows with multiple (>1) victim.count or perpetrator.count information. (for reasons mentioned above)
+- Remove all scenarios with a victim count of 998 
+
+
+
+
+
+
+
+```{r data cleansing}
+
+# Remove multiple homicide incidents:
+df <- subset(df, perpetrator.count <2 & victim.count <2)         
+table(df$perpetrator.count)
+
+# Removes observations with a victim age of 988 
+df <- subset(df, victim.age < 100)                                
+
+```
+
+
+
+
+
+
+
+
+# 4) Exploring the Central Limit Theorem:
+
+
+
+OK, before we do anything further, lets check and see how we can use this dataset to explore the central limit theorem.  To do this, we need to identify a fully quantative variable (non qualatative), which we have for each observation (i.e. row).  If this is the case, then we should be able to take the means of a large number of group sample sets and demonstrate that their distribution centers on a limited normal distribution.
+
+
+For starters, lets look at the orginal distribution of victim's ages, as available in the raw dataframe.
+
+# 4.a) Distribution of Victim's Ages:
+
+```{r Distribution of Victim Ages}
+
+barplot(table(df$victim.age), col='red')
+
+
+```
+
+OK, next lets, look at standard sampling with replacement.  To start, we'll begin with a sample grouping of 10, and increment by ten for each sampling set thereafter.
+
+Because of the size of this dataset, (640k rows), I'll use the replicate function rather then a for-loop for facilitating sampling functions.
+
+Similarly, because of the dataset size I'll limit the number of samples to 100 for stratified sampling (the high time comlexity at only 400 iterations features a runtime over an hour by itself.)
+
+
+
+# 4.b) Sampling with Replacement
+
+```{r Sampling with Replacement}
+
+s1 <- replicate(1000, mean(sample(df$victim.age, 10, replace = T)))
+s1 <- round(s1)
+s1sd <- sd(s1)
+
+s2 <- replicate(1000, mean(sample(df$victim.age, 20, replace = T))) 
+s2 <- round(s2)
+s2sd <- sd(s2)
+
+s3 <- replicate(1000, mean(sample(df$victim.age, 30, replace =T))) 
+s3 <- round(s3)
+s3sd <- sd(s3) 
+
+
+s4 <- replicate(1000, mean(sample(df$victim.age, 40, replace = T))) 
+s4 <- round(s4)
+s4sd <- sd(s4) 
+
+
+{
+p1 <- plot_ly(x = s1,
+             type = "histogram"
+             )
+
+p2 <- plot_ly(x = s2,
+             type = "histogram"
+            )
+
+p3 <- plot_ly(x = s3,
+             type = "histogram"
+             )
+
+p4 <- plot_ly(x = s4,
+             type = "histogram"
+             )
+
+
+p <- subplot(p1, p2, p3, p4, nrows=2, shareY = T, shareX = T)
+p
+}
+
+pop.mean <- mean(df$victim.age)
+
+conf <- 90
+alpha <- 1 - conf/100
+x <- c(qnorm(alpha/2), qnorm(1 - alpha/2))
+ci <- (x * s4sd) + pop.mean
+ci <- paste(round(ci[1],4), round(ci[2],4), sep =" - ")
+
+paste ("Population Standard Deviation", round(s4sd, 4))
+paste ("Population Mean", round(pop.mean,4), sep = " ")
+paste ("90% Confidence Level: ", "Alpha =", alpha, "CI: ", ci,  sep = " ")
+
+conf <- 80
+alpha <- 1 - conf/100
+x <- c(qnorm(alpha/2), qnorm(1 - alpha/2))
+ci <- (x * s4sd) + pop.mean 
+ci <- paste(round(ci[1],4), round(ci[2],4),  sep =" - ")
+
+
+paste ("80% Confidence Level: ", "Alpha =", alpha, "CI: ", ci, sep = " ")
+
+
+```
+
+
+
+
+
+
+# 4.c) Sampling without Replacement (SRSWOR)
+
+```{r Sampling without Replacement}
+
+s1 <- replicate(1000, mean(sample(df$victim.age, 10, replace = F)))
+s1 <- round(s1)
+s1sd <- sd(s1)
+
+s2 <- replicate(1000, mean(sample(df$victim.age, 20, replace = F))) 
+s2 <- round(s2)
+s2sd <- sd(s2)
+
+s3 <- replicate(1000, mean(sample(df$victim.age, 30, replace =F))) 
+s3 <- round(s3)
+s3sd <- sd(s3) 
+
+
+s4 <- replicate(1000, mean(sample(df$victim.age, 40, replace = F))) 
+s4 <- round(s4)
+s4sd <- sd(s4) 
+
+
+
+p1 <- plot_ly(x = s1,
+             type = "histogram"
+             )
+
+p2 <- plot_ly(x = s2,
+             type = "histogram"
+            )
+
+p3 <- plot_ly(x = s3,
+             type = "histogram"
+             )
+
+p4 <- plot_ly(x = s4,
+             type = "histogram"
+             )
+
+
+p <- subplot(p1, p2, p3, p4, nrows=2, shareY = T, shareX = T)
+p
+
+
+
+
+conf <- 90
+alpha <- 1 - conf/100
+x <- c(qnorm(alpha/2), qnorm(1 - alpha/2))
+ci <- (x * s4sd) + pop.mean
+ci <- paste(round(ci[1],4), round(ci[2],4), sep =" - ")
+
+paste ("Population Standard Deviation", round(s4sd, 4))
+paste ("Population Mean", round(pop.mean,4), sep = " ")
+paste ("90% Confidence Level: ", "Alpha =", alpha, "CI: ", ci,  sep = " ")
+
+conf <- 80
+alpha <- 1 - conf/100
+x <- c(qnorm(alpha/2), qnorm(1 - alpha/2))
+ci <- (x * s4sd) + pop.mean 
+ci <- paste(round(ci[1],4), round(ci[2],4),  sep =" - ")
+
+
+paste ("80% Confidence Level: ", "Alpha =", alpha, "CI: ", ci, sep = " ")
+
+
+```
+
+
+
+
+
+
+
+
+
+# 4.d) Systematic Sampling:
+
+
+```{r Systematic Sampling}
+
+sys.sample = function(N,n){
+k = ceiling(N/n)
+#ceiling(x) rounds to the nearest integer that's larger than x. 
+#This means ceiling (2.1) = 3 
+r = sample(1:k, 1)
+sys.samp = seq(r, r + k*(n-1), k)
+return (sys.samp)
+# Note: the last command "\"\n" prints the result in a new line
+}
+
+pop.mean <- mean(df$victim.age)
+
+
+s1 <- replicate(1000, mean(df$victim.age[as.numeric(sys.sample(length(df$victim.age),10))]))
+s1sd <- sd(s1)
+s1 <- round(s1)
+
+s2 <- replicate(1000, mean(df$victim.age[as.numeric(sys.sample(length(df$victim.age),20))]))
+s2sd <- sd(s2)
+s2 <- round(s2)
+
+s3 <- replicate(1000, mean(df$victim.age[as.numeric(sys.sample(length(df$victim.age),30))]))
+s3sd <- sd(s3)
+s3 <- round(s3)
+
+s4 <- replicate(1000, mean(df$victim.age[as.numeric(sys.sample(length(df$victim.age),40))]))
+s4sd <- sd(s4)
+s4 <- round(s4)
+
+
+
+
+p1 <- plot_ly(x = s1,
+             type = "histogram"
+             )
+
+p2 <- plot_ly(x = s2,
+             type = "histogram"
+            )
+
+p3 <- plot_ly(x = s3,
+             type = "histogram"
+             )
+
+p4 <- plot_ly(x = s4,
+             type = "histogram"
+             )
+
+
+p <- subplot(p1, p2, p3, p4, nrows=2, shareY = T, shareX = T)
+p
+
+
+
+
+
+conf <- 90
+alpha <- 1 - conf/100
+x <- c(qnorm(alpha/2), qnorm(1 - alpha/2))
+ci <- (x * s4sd) + pop.mean
+ci <- paste(round(ci[1],4), round(ci[2],4), sep =" - ")
+
+paste ("Population Standard Deviation", round(s4sd, 4))
+paste ("Population Mean", round(pop.mean,4), sep = " ")
+paste ("90% Confidence Level: ", "Alpha =", alpha, "CI: ", ci,  sep = " ")
+
+conf <- 80
+alpha <- 1 - conf/100
+x <- c(qnorm(alpha/2), qnorm(1 - alpha/2))
+ci <- (x * s4sd) + pop.mean 
+ci <- paste(round(ci[1],4), round(ci[2],4),  sep =" - ")
+
+
+paste ("80% Confidence Level: ", "Alpha =", alpha, "CI: ", ci, sep = " ")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+# 4.e) Systematic Sampling with Unequal Probabilty (UPS):
+
+
+```{r Systematic Sampling with Unequal Probability}
+
+# Code courtesy of Alina Matei (https://github.com/cran/sampling/blob/master/R/UPsystematic.R)
+
+UPsystematic <- function(pik,eps=1e-6) 
+{
+if(any(is.na(pik))) stop("there are missing values in the pik vector")
+list=pik > eps & pik < 1-eps
+pik1 = pik[list]
+N = length(pik1)
+a = (c(0, cumsum(pik1)) - runif(1, 0, 1))%%1
+s1 = as.integer(a[1:N] > a[2:(N + 1)])
+s = pik
+s[list] = s1
+s
+}
+
+
+s1 <- replicate(1000, mean(df$victim.age[(1:length(subset(df$victim.age, df$victim.age != 0)))[UPsystematic(inclusionprobabilities(subset(df$victim.age, df$victim.age != 0), 10))==1]]))
+s1 <- round(s1)
+
+s2 <- replicate(1000, mean(df$victim.age[(1:length(subset(df$victim.age, df$victim.age != 0)))[UPsystematic(inclusionprobabilities(subset(df$victim.age, df$victim.age != 0), 20))==1]]))
+s2 <- round(s2)
+
+
+s3 <- replicate(1000, mean(df$victim.age[(1:length(subset(df$victim.age, df$victim.age != 0)))[UPsystematic(inclusionprobabilities(subset(df$victim.age, df$victim.age != 0), 30))==1]]))
+s3 <- round(s3)
+
+
+s4 <- replicate(1000, mean(df$victim.age[(1:length(subset(df$victim.age, df$victim.age != 0)))[UPsystematic(inclusionprobabilities(subset(df$victim.age, df$victim.age != 0), 40))==1]]))
+s4 <- round(s4)
+
+
+
+
+
+
+
+
+p1 <- plot_ly(x = s1,
+             type = "histogram"
+             )
+
+p2 <- plot_ly(x = s2,
+             type = "histogram"
+            )
+
+p3 <- plot_ly(x = s3,
+             type = "histogram"
+             )
+
+p4 <- plot_ly(x = s4,
+             type = "histogram"
+             )
+
+
+p <- subplot(p1, p2, p3, p4, nrows=2, shareY = T, shareX = T)
+p
+
+
+
+conf <- 90
+alpha <- 1 - conf/100
+x <- c(qnorm(alpha/2), qnorm(1 - alpha/2))
+ci <- (x * s4sd) + pop.mean
+ci <- paste(round(ci[1],4), round(ci[2],4), sep =" - ")
+
+paste ("Population Standard Deviation", round(s4sd, 4))
+paste ("Population Mean", round(pop.mean,4), sep = " ")
+paste ("90% Confidence Level: ", "Alpha =", alpha, "CI: ", ci,  sep = " ")
+
+conf <- 80
+alpha <- 1 - conf/100
+x <- c(qnorm(alpha/2), qnorm(1 - alpha/2))
+ci <- (x * s4sd) + pop.mean 
+ci <- paste(round(ci[1],4), round(ci[2],4),  sep =" - ")
+
+
+paste ("80% Confidence Level: ", "Alpha =", alpha, "CI: ", ci, sep = " ")
+
+
+```
+
+
+# 4.f) Stratified Sampling with Replacement (Using "weapon" Category)
+
+```{r Stratified Sampling with Replacement (Using "weapon" Category)}
+
+
+
+
+strat.by.weapon <- function(x){
+# data=df[order(df$weapon),]
+st=strata(data,stratanames=c("weapon"),size=c(rep(x,16)), method="srswr")
+return (mean(getdata(data, st)$victim.age))
+}
+
+
+
+
+s1 <- replicate(100, round(strat.by.weapon(10))) 
+s1
+
+s2 <- replicate(100, round(strat.by.weapon(20)))  
+
+s3 <- replicate(100, round(strat.by.weapon(30)))
+s3
+
+s4 <- replicate(100, round(strat.by.weapon(40)))
+s4
+
+
+
+
+
+p1 <- plot_ly(x = s1,
+             type = "histogram"
+             )
+
+p2 <- plot_ly(x = s2,
+             type = "histogram"
+            )
+
+p3 <- plot_ly(x = s3,
+             type = "histogram"
+             )
+
+p4 <- plot_ly(x = s4,
+             type = "histogram"
+             )
+
+
+p <- subplot(p1, p2, p3, p4, nrows=2, shareY = T, shareX = T)
+p
+
+
+
+conf <- 90
+alpha <- 1 - conf/100
+x <- c(qnorm(alpha/2), qnorm(1 - alpha/2))
+ci <- (x * s4sd) + pop.mean
+ci <- paste(round(ci[1],4), round(ci[2],4), sep =" - ")
+
+paste ("Population Standard Deviation", round(s4sd, 4))
+paste ("Population Mean", round(pop.mean,4), sep = " ")
+paste ("90% Confidence Level: ", "Alpha =", alpha, "CI: ", ci,  sep = " ")
+
+conf <- 80
+alpha <- 1 - conf/100
+x <- c(qnorm(alpha/2), qnorm(1 - alpha/2))
+ci <- (x * s4sd) + pop.mean 
+ci <- paste(round(ci[1],4), round(ci[2],4),  sep =" - ")
+
+
+paste ("80% Confidence Level: ", "Alpha =", alpha, "CI: ", ci, sep = " ")
+
+
+
+
+```
+
+
+
+
+## 5.a) Seperating Raw Data into Solved and Unsolved Datasets:
+
+
+ After that, I'll try and try and divide the solved and unsovled cases?  But how should we be recognising a truly solved case?  (is it a case where only case.solved == "Yes", or should it be, a case where all victim and perp information have been entered by the reporting body?
+ 
+```{r Seperating Raw Data into Solved and Unsolved Datasets:}
+
+df.solved <- subset(df, df$crime.solved == "Yes")
+df.unsolved <- subset(df, df$crime.solved == "No")
+
+solved.rel.props <- rbind(
+
+table(df.solved$victim.sex == 'Unknown') ,
+table(df.solved$victim.race == 'Unknown'),
+table(df.solved$victim.ethnicity == 'Unknown'),
+table(df.solved$perpetrator.sex == 'Unknown'),
+table(df.solved$perpetrator.race == 'Unknown'),
+table(df.solved$perpetrator.ethnicity == 'Unknown'),
+table(df.solved$relationship== 'Unknown'),
+table(df.solved$weapon== 'Unknown')
+)
+
+solved.rel.props <- (solved.rel.props/nrow(df.solved)) * 100
+
+
+rownames(solved.rel.props) <- c("victim.sex", "victim.race", "victim.ethnicity", "perp.sex", "perp.race", "perp.ethnicity", "relationship", "weapon")
+colnames(solved.rel.props) <- c("Solved", "Unsolved")
+
+solved.rel.props
+        
+```
+
+
+OK, so from this analysis, we see that cases where crime.solved == "Yes", we have very high probabilities of having sucessfuly identified these fields:
+
+victim.sex:  99.976%
+victim.race: 99.282%
+perpetrator.sex:  99.969%
+perpetrator.race:  98.66%
+weapon: 95.882%
+
+Conversly, with the following probabilities, relationship and ethnicity seems to not be nearly as important to achieveing a "solved" case:
+
+relationship:  79.449%
+victim.ethnicity:  43.658%
+perpetrator.ethniicity: 43.333%
+
+
+OK, that seems pretty interesting.  I think the relationship variable is an interesting variable to have so now lets redifine the solved and unsolved subsets with the following filter settings:
+
+- df.solved <- rows where crime.solved == "Yes" & victim.sex != "Unknown" & relationship != "Unknown"
+- df.unsolved  <- rows where crime.solved == "No" | victim.sex == "Unknown" | relationship == "Unknown"
+
+
+
+```{r Seperate in to Subsets }
+
+# df.solved subset (i.e. murder cases that have been fully solved)
+
+df.solved <-  df %>%
+  filter(
+  crime.solved    == "Yes" &
+    victim.sex      != "Unknown" &
+    perpetrator.sex != "Unknown" &
+    perpetrator.age != 0 &
+    relationship    != "Unknown") %>%
+  droplevels()   
+
+# df.unsolved subset (i.e. murder cases that have not been fully solved)
+
+
+df.unsolved <-  df %>%
+  filter(
+  crime.solved    == "No" |
+    victim.sex      == "Unknown" |
+    perpetrator.sex == "Unknown" |
+    perpetrator.sex == 0 |
+    relationship    == "Unknown"  ) %>%
+  droplevels()   
+
+
+```
+
+
+Now that we've seperated solved and unsolved cases, lets look at how they've differed over time.
+
+# 5.b) Unsolved Vs Solved Murders Over Time:
+
+
+```{r Unsolved Vs Solved Murders Over Time:}
+
+unsolved.murders.per.year <- table(df.unsolved$year)
+solved.murders.per.year <- table(df.solved$year)
+
+years <- c(names(solved.murders.per.year))
+solved <- c(solved.murders.per.year)
+unsolved <- c(unsolved.murders.per.year)
+data <- data.frame(years, solved, unsolved)
+
+
+p <- plot_ly(data, x = ~years, y = ~solved, type = 'bar', name = 'Solved Cases') %>%
+  add_trace(y = ~unsolved, name = 'Unsolved Cases') %>%
+  layout(yaxis = list(title = 'Total Murders per Year'), barmode = 'stack')
+
+
+p
+
+```
+
+
+
+
+
+
+OK, cool, thats kinda interesting.  It looks like in the 1908s the solved murders largely outnumbered unsolved murders, however that trend seems to have dimished over the past few decades, and now they're about equal.
+
+
+OK, next lets compare the age distribution of victims ages in solved and unsolved casses.
+
+
+
+# 5.c) Age Distribution of Solved and Unsolved Murders:
+
+
+```{r Age Distribution of Solved and Unsolved Murders:}
+solved.age.skewtest <- (subset(df.solved$victim.age, df.solved$victim.age < 99))
+skewness(solved.age.skewtest)
+
+unsolved.age.skewtest <- (subset(df.unsolved$victim.age, df.unsolved$victim.age < 99))
+skewness(unsolved.age.skewtest)
+
+mean(df.solved$victim.age)
+mean(df.unsolved$victim.age)
+
+
+p <- plot_ly(alpha = .7) %>%
+  add_histogram(x = ~df.solved$victim.age, name="Solved Cases") %>%
+  add_histogram(x = ~df.unsolved$victim.age, name="Unsolved Cases") %>%
+  layout(barmode = "overlay",
+         xaxis = list(title = 'Solved Cases', zeroline = TRUE),
+         yaxis = list(title = 'Unsolved Cases'))
+p
+
+```
+
+
+
+
+
+
+These two distributions look fairly similar, however it looks like there's some interesting features to note:
+
+
+- Both distribution's primary "bell curve"" appear to skew to the left
+- Crimes featuring a perpetrator between the age of 25 - 80 seem to be slightly more solveable than crimes committed by those in their early 20s
+- Infant/ todler murders seem to be the most easily solved (most likely because it is frequently commited by parents / family)
+
+I'd also point out that I dont really understand the high rate of 0 and 100 yearold unsolved murders, my guess is that 0 stands in for children <1 or of an unknown but young age, and 100 stands in for elderly people of an unknown age.
+
+Next, we'll look a the weapon choice of solved and unsolved murders.
+
+
+
+# 5.d) Weapon Choice of Solved and Unsolved Murders:
+
+
+```{r Weapon Choice of Solved and Unsolved Murders:}
+
+
+solved.weapons.table <- table(df.solved$weapon)
+solved.data <- data.frame(cbind((names(solved.weapons.table)), solved.weapons.table))
+colnames(solved.data) <- c('weapon','count')
+
+
+p1 <- plot_ly(solved.data, labels = ~weapon, values = ~count, type = 'pie',
+        textposition = 'outside',
+        textinfo = 'label+percent',
+        insidetextfont = list(color = '#FFFFFF'),
+        hoverinfo = 'text',
+        text = ~prettyNum(count,big.mark=",",scientific=FALSE),
+        marker = list(colors = colors,
+                      line = list(color = '#FFFFFF', width = 1)),
+                      #The 'pull' attribute can also be used to create space between the sectors
+        showlegend = FALSE) %>%
+  layout(title = 'Weapon Distribution in Solved Cases',
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+
+
+unsolved.weapons.table <- table(df.unsolved$weapon)
+unsolved.data <- data.frame(cbind((names(unsolved.weapons.table)), unsolved.weapons.table))
+colnames(unsolved.data) <- c('weapon','count')
+
+
+p2 <- plot_ly(unsolved.data, labels = ~weapon, values = ~count, type = 'pie',
+        textposition = 'outside',
+        textinfo = 'label+percent',
+        insidetextfont = list(color = '#FFFFFF'),
+        hoverinfo = 'text',
+        text = ~prettyNum(count,big.mark=",",scientific=FALSE),
+        marker = list(colors = colors,
+                      line = list(color = '#FFFFFF', width = 1)),
+                      #The 'pull' attribute can also be used to create space between the sectors
+        showlegend = FALSE) %>%
+  layout(title = 'Weapon Distribution in Unsolved Cases',
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+
+p1
+
+
+
+
+
+
+
+p2
+
+
+```
+
+
+# 6) General EDA:
+
+
+OK, fairly similar distributions here.  I'd note that the 7.09% frequency of "Unknown" weapons in is a bit higher than I would have expected.
+
+Next, we'll use a heat map to compare wepon frequency over time: 
+
+
+
+# 6.a) Heatmaps of Weapon Frequency:
+
+```{r Heatmaps of Weapon Frequency:}
+{
+years <- names(table(df.solved$year))
+weapons <- names(table(df.solved$weapon))
+m <- (table(df.solved$weapon, df.solved$year))
+p1 <- plot_ly(
+    x = years, 
+    y = weapons,
+    z = m, type = "heatmap"
+)
+  p1
+}
+
+{
+years <- names(table(df.unsolved$year))
+weapons <- names(table(df.unsolved$weapon))
+m <- (table(df.unsolved$weapon, df.unsolved$year))
+p2 <- plot_ly(
+    x = years, 
+    y = weapons,
+    z = m, type = "heatmap"
+)
+  p2
+}
+
+{
+years <- names(table(df$year))
+weapons <- names(table(df$weapon))
+m <- (table(df$weapon, df$year))
+p2 <- plot_ly(
+    x = years, 
+    y = weapons,
+    z = m, type = "heatmap"
+)
+  p2
+}
+
+```
+
+
+
+
+
+These results are pretty interesting.  As we should have expected, handguns are the most predominant featured weapon in both solved and unsolved murders, for every single year on record.
+
+
+
+# 6.b) Murders Per Firearm Weapon Type:
+
+```{r Comparison of Murders per Major Firearm Weapon Type 1980:2014}
+
+handgun <- subset(df, weapon == 'Handgun')
+handgun <- count(handgun, vars=handgun$year)
+
+firearm <- subset(df, weapon  == 'Firearm')
+firearm <- count(firearm, vars=firearm$year)
+
+knife <- subset(df, weapon == 'Knife')
+knife <- count(knife, vars=knife$year)
+
+blunt <- subset(df, weapon == 'Blunt Object')
+blunt <- count(blunt, vars=blunt$year)
+
+shotgun <- subset(df, weapon == 'Shotgun')
+shotgun <- count(shotgun, vars=shotgun$year)
+
+rifle <- subset(df, weapon == 'Rifle')
+rifle <- count(rifle, vars=rifle$year)
+
+gun <- subset(df, weapon == 'Gun')
+gun <- count(gun, vars=gun$year)
+
+
+
+years <- 1980:2014
+handgun.murders <- handgun[2]
+firearm.murders <- firearm[2]
+shotgun.murders <- shotgun[2]
+rifle.murders <- rifle[2]
+gun.murders <- gun[2]
+
+
+data <- data.frame(years, handgun.murders, firearm.murders, shotgun.murders, rifle.murders, gun.murders)
+names(data) <- c('year','handgun','firearm', "shotgun", "rifle", "gun")
+
+p1 <- plot_ly(data, x = 1980:2014, y =handgun.murders$n, name = 'Handgun', type = 'scatter', mode = 'lines',
+        line = list(color = 'red', width = 3)) %>%
+  add_trace(y = firearm.murders$n, name = 'Firearm', line = list(color = 'blue', width = 3)) %>%
+  add_trace(y = shotgun.murders$n, name = 'Shotgun', line = list(color = 'green', width = 3)) %>%
+  add_trace(y = rifle.murders$n, name = 'Rifle', line = list(color = 'purple', width = 3)) %>%
+  add_trace(y = gun.murders$n, name = 'Gun', line = list(color = 'orange', width = 3)) %>%
+
+  layout(title = "Annual Murders per Firearm Weapon Type",
+         xaxis = list(title = "Years"),
+         yaxis = list(title = "Murders", range = c(0,15000)))
+p1
+
+```
+
+
+
+
+OK, so this seems to indicate some basic trends:
+
+- Handguns are by far the most common type of firearm weapon used in US murders.
+- The last 30 years seem to have a strong decline in hunting-weapons (rifle, shotgun) murders
+- The past 20 years have seen an increase in "firearm" murders 
+
+
+
+Anecdotialy, I would suspect that the increase in the non-specific ikley due to the increase availability of semi-automatic/assault.
+
+
+
+# 6.c) Murders Per Non-Firearm Weapon Type:
+
+```{r Murders Per Non-Firearm Weapon Type:}
+
+knife <- subset(df, weapon == 'Knife')
+knife <- count(knife, vars=knife$year)
+
+blunt <- subset(df, weapon == 'Blunt Object')
+blunt <- count(blunt, vars=blunt$year)
+
+strang <- subset(df, weapon == 'Strangulation')
+strang <- count(strang, vars=strang$year)
+
+drown<- subset(df, weapon == 'Drowning')
+drown <- count(drown, vars=drown$year)
+
+suff <- subset(df, weapon == 'Suffocation')
+suff <- count(suff, vars=suff$year)
+
+years <- 1980:2014
+knife.murders <- knife[2]
+blunt.murders <- blunt[2]
+strang.murders <- strang[2]
+drown.murders <- rifle[2]
+suff.murders <- suff[2]
+
+
+data <- data.frame(years, knife.murders, blunt.murders, strang.murders, drown.murders, suff.murders)
+names(data) <- c('year', 'knife', 'blunt', "strang", "drown","suff")
+
+p <- plot_ly(data, x = 1980:2014, y =knife.murders$n, name = 'Knife', type = 'scatter', mode = 'lines',
+        line = list(color = 'red', width = 3)) %>%
+
+  add_trace(y = blunt.murders$n, name = 'Blunt Object', line = list(color = 'blue', width = 3)) %>%
+  add_trace(y = strang.murders$n, name = 'Strangulation', line = list(color = 'green', width = 3)) %>%
+  add_trace(y = drown.murders$n, name = 'Drowning', line = list(color = 'purple', width = 3)) %>%
+  add_trace(y = suff.murders$n, name = 'Suffocation', line = list(color = 'orange', width = 3)) %>%
+  layout(title = "Annual Murders per Non-Firearm Weapon Type",
+         xaxis = list(title = "Years"),
+         yaxis = list(title = "Murders", range = c(0,5000)))
+p
+```
+
+
+
+Again, this shows some interesting trends:
+
+- Knives are the most popular non-firearm weapon type, but have fallen significantly in use over the past 30 years.
+- Blunt object murders have also declined significantly in the past 30 years
+- Drowning murders and strangulation have  declined moderately in the past 30 years.
+
+
+
+
+# 6.d) Historical Murders per Month:
+
+
+```{r Historical Murders per Month}
+
+solved.month.table <- table(df.solved$month)
+solved.data <- data.frame(cbind((names(solved.month.table)), solved.month.table))
+colnames(solved.data) <- c('month','count')
+
+p1 <- plot_ly(solved.data, labels = ~month, values = ~count, type = 'pie',
+        textposition = 'outside',
+        textinfo = 'label+percent',
+        insidetextfont = list(color = '#FFFFFF'),
+        hoverinfo = 'text',
+        text = ~prettyNum(count,big.mark=",",scientific=FALSE),
+        marker = list(colors = colors,
+                      line = list(color = '#FFFFFF', width = 1)),
+                      #The 'pull' attribute can also be used to create space between the sectors
+        showlegend = FALSE) %>%
+        layout(title = 'Historical Murers per Month in Solved Cases',
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+p1
+
+unsolved.month.table <- table(df.unsolved$month)
+unsolved.data <- data.frame(cbind((names(unsolved.month.table)), unsolved.month.table))
+colnames(unsolved.data) <- c('month','count')
+
+p2 <- plot_ly(unsolved.data, labels = ~month, values = ~count, type = 'pie',
+        textposition = 'outside',
+        textinfo = 'label+percent',
+        insidetextfont = list(color = '#FFFFFF'),
+        hoverinfo = 'text',
+        text = ~prettyNum(count,big.mark=",",scientific=FALSE),
+        marker = list(colors = colors,
+                      line = list(color = '#FFFFFF', width = 1)),
+                      #The 'pull' attribute can also be used to create space between the sectors
+        showlegend = FALSE) %>%
+        layout(title = 'Historical Murders per Month Unsolved Cases',
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+
+
+p2
+```
+
+
+
+
+
+
+
+
+OK, very interestiing. each month is almost exactly alligned with its theoretical average (8.333%) = 1 / 12.  This likley means one of two things:
+
+- There's little coorelation between a given month and the frequency of murders (quite possible if murder is truly a "crime of passion")  
+- The FBI's release policy created an near-equal distrubution of relaease per month (nationwide).
+- Oddly it appears that February and April falls below the expected 8.33.
+
+Again, performing if we perform another heat map analysis, we can see if the distribution of murders per month has changed annualy:
+
+
+
+#  6.e) Heatmap Analysis of Murders per Month:
+
+```{r Heatmap Analysis of Murders per Month:}
+
+years <- names(table(df.solved$year))
+month <- names(table(df.solved$month))
+m <- (table(df.solved$month, df.solved$year))
+p1 <- plot_ly(
+    x = years, 
+    y = month,
+    z = m, type = "heatmap",
+    zauto=F,
+    zmax = 1400
+) %>%
+layout(title = "Solved Murders per Month"
+        )
+p1
+
+
+years <- names(table(df.unsolved$year))
+month <- names(table(df.unsolved$month))
+m <- (table(df.unsolved$month, df.unsolved$year))
+p2 <- plot_ly(
+    x = years, 
+    y = month,
+    z = m, type = "heatmap",
+    zauto=F,
+    zmax = 1400
+)%>%
+layout(title = "Unsolved Murders per Month"
+        )
+p2
+
+
+years <- names(table(df$year))
+month <- names(table(df$month))
+m <- (table(df$month, df$year))
+p3 <- plot_ly(
+    x = years, 
+    y = month,
+    z = m, 
+    type = "heatmap"
+
+)%>%
+layout(title = "Total Murders per Month"
+        )
+p3
+
+
+```
+
+
+
+
+Interesting...  We can clearly a couple distinct features:
+
+- The years of 1980 - 1995 seems to support the higher murder rate, as supported in previous plots.  
+- There seems to be an increased frequency in some months.
+
+OK, well lets test that second observation by pairing some months against each other.
+
+
+
+# 6.f)  Contrasting Historical Murders per Month:
+
+```{r Comparison of Murders per Month 1980:2014}
+
+month <- c('January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December')
+
+feb <- subset(df, month == 'February')
+feb <- count(feb, vars=feb$year)
+july <- subset(df, month == 'July')
+july <- count(july, vars=july$year)
+aug <- subset(df, month == 'August')
+aug <- count(aug, vars=aug$year)
+sep <- subset(df, month == 'September')
+sep <- count(sep, vars=sep$year)
+avg <- table(df$year)/12
+
+
+years <- 1980:2014
+feb.murders <- feb[2]
+july.murders <- july[2]
+aug.murders <- aug[2]
+sep.murders <- sep[2]
+
+
+data <- data.frame(years, feb.murders, july.murders, aug.murders, sep.murders)
+names(data) <- c('month', 'feb','july', 'aug', 'sep')
+
+p <- plot_ly(data, x = 1980:2014, y =feb.murders$n, name = 'February', type = 'scatter', mode = 'lines',
+        line = list(color = 'red', width = 3)) %>%
+  add_trace(y = july.murders$n, name = 'July', line = list(color = 'blue', width = 3)) %>%
+  add_trace(y = aug.murders$n, name = 'August', line = list(color = 'orange', width = 3)) %>%
+  add_trace(y = sep.murders$n, name = 'September', line = list(color = 'green', width = 3)) %>%
+  add_trace(y = avg, name = 'Average', line = list(color = 'black', width = 3, dash="dash")) %>%
+  layout(title = "Total Murders per Month",
+         xaxis = list(title = "Years"),
+         yaxis = list(title = "Murders", range = c(0,2500)))
+p
+
+```
+
+
+
+
+So interestingly, it does look like the month of February does feature a significantly lower amount of murders each year other months.  Unortunately theres no way of knowing if this is actually unique to February (which is the coldest month of the year for some of the major US metro areas), or it a result of the FBI's reporting methodology.
+
+
+# 6.g)  Racial Breakdown in Solved and Unsolved Cases:
+
+```{r Racial Breakdown in Solved and Unsolved Cases:}
+
+solved.race.table <- table(df.solved$victim.general.race)
+solved.data <- data.frame(cbind((names(solved.race.table)), solved.race.table))
+colnames(solved.data) <- c('race','count')
+
+
+p1 <- plot_ly(solved.data, labels = ~race, values = ~count, type = 'pie',
+        textposition = 'outside',
+        textinfo = 'label+percent',
+        insidetextfont = list(color = '#FFFFFF'),
+        hoverinfo = 'text',
+        text = ~prettyNum(count,big.mark=",",scientific=FALSE),
+        marker = list(colors = colors,
+                      line = list(color = '#FFFFFF', width = 1)),
+                      #The 'pull' attribute can also be used to create space between the sectors
+        showlegend = FALSE) %>%
+        layout(title = 'Victim.race Distribution in Solved Cases',
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+p1
+
+
+solved.race.table <- table(df.solved$perpetrator.general.race)
+
+solved.data <- data.frame(cbind((names(solved.race.table)), solved.race.table))
+colnames(solved.data) <- c('race','count')
+
+solved.data
+
+p2 <- plot_ly(solved.data, labels = ~race, values = ~count, type = 'pie',
+        textposition = 'outside',
+        textinfo = 'label+percent',
+        insidetextfont = list(color = '#FFFFFF'),
+        hoverinfo = 'text',
+        text = ~prettyNum(count,big.mark=",",scientific=FALSE),
+        marker = list(colors = colors,
+                      line = list(color = '#FFFFFF', width = 1)),
+                      #The 'pull' attribute can also be used to create space between the sectors
+        showlegend = FALSE) %>%
+        layout(title = 'Perp.race Distribution in Unsolved Cases',
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+p2
+
+
+
+```
+
+
+
+
+
+OK, interesting.  
+
+Its a bit frustrating that such a high degree of white people have an unknown ethnicity lable, but based on the cdc records, it looks like during 1995 - 2015, hispanics feature about double the victim murder rate of whites, which likley suggests that a majority of these "White (Unknown)" individuals should actually feature an ethnicty of "Hispanic". 
+
+CDC Report: https://www.cdc.gov/mmwr/volumes/66/wr/mm6631a9.htm 
+
+OK, now lets take this data and graph it over time, like we did for the month information.  I'll start by looking at the raw dataframe information, (and not just the solved one, since the victim's race is known to some degree for most cases.)
+
+
+
+
+# 6.h) Comparisons of Murders by Race:
+
+```{r Comparison of Murders by Race}
+
+
+# for some reason, there are no "White (Hispanic)" categories for the year 1987, so I'll correct by inserting a year"
+
+insertRow <- function(existingDF, newrow, r) {
+  existingDF[seq(r+1,nrow(existingDF)+1),] <- existingDF[seq(r,nrow(existingDF)),]
+  existingDF[r,] <- newrow
+  existingDF
+}
+
+unk <- subset(df, victim.general.race == 'Unknown')
+unk <- count(unk, vars=unk$year)
+
+native <- subset(df, victim.general.race == 'Native American/Alaska Native')
+native <- count(native, vars=native$year)
+
+asian <- subset(df, victim.general.race == 'Asian/Pacific Islander')
+asian <- count(asian, vars=asian$year)
+
+black <- subset(df, victim.general.race == 'Black')
+black <- count(black, vars=black$year)
+
+white.hisp <- subset(df, victim.general.race == 'White (Hispanic)')
+white.hisp <- count(white.hisp, vars=white.hisp$year)
+white.hisp <- insertRow(white.hisp, c(1987,NA), r = 8)
+
+white <- subset(df, victim.general.race == 'White')
+white <- count(white, vars=white$year)
+white <- insertRow(white, c(1987,NA), r = 8)  # correcting for the missing 1987 year
+
+white.unk <- subset(df, victim.general.race == 'White (Unknown)')
+white.unk <- count(white.unk, vars=white.unk$year)
+
+total.white <- subset(df, victim.race == 'White')
+total.white <- count(total.white, vars=total.white$year)
+
+years <- 1980:2014
+native.vic <- native[2]
+asian.vic <- asian[2]
+black.vic <- black[2]
+white.hisp.vic <- white.hisp[2]
+white.vic <- white[2]
+white.unk.vic <- white.unk[2]
+total.white.vic <- total.white[2] 
+unk.vic <- unk[2]
+
+
+data <- data.frame(years, black.vic, white.hisp.vic, white.vic, white.unk.vic, asian.vic, native.vic, total.white.vic, unk.vic)
+names(data) <- c('year', 'black', 'white.hisp', 'white', 'white.unk', 'asian', 'native', 'total.white', 'unk')
+
+
+p <- plot_ly(data, x = 1980:2014, y =data$black, name = 'Black', type = 'scatter', mode = 'lines',
+   line = list(color = 'red', width = 3)) %>%
+   add_trace(y = data$white.hisp, name = 'White (Hispanic)', line = list(color = 'blue', width = 3)) %>%
+   add_trace(y= data$white, name = 'White (Non-Hispanic)', line = list(color = 'green', width = 3)) %>%
+   add_trace(y= data$white.unk, name = 'White (Unknown)', line = list(color = 'orange', width = 3)) %>%
+   add_trace(y= data$asian, name = 'Asian/Pacific Islander', line = list(color = 'teal', width = 3)) %>%
+   add_trace(y= data$native, name = 'Native American', line = list(color = 'purple', width = 3)) %>%
+   add_trace(y= data$total.white, name = 'White (All Ethnicities)', line = list(color = 'black', width = 3, dash="dash")) %>%
+   add_trace(y= data$unk, name = 'Unknown', line = list(color = 'maroon', width = 3)) %>%
+
+
+  layout(title = "Annualized Victim Count by Race",
+         xaxis = list(title = "Years"),
+         yaxis = list(title = "Murders", range = c(0,12000)))
+p
+
+```
+
+
+
+
+
+OK, that analysis leaves us with a quirky chart here.  Here's a couple notes:
+
+- Interestingly, it looks like that in 1987, there was a major change-up in how ethnicities for white raced victims were reported.
+- In 1987, all white raced victims were given a "unknown" ethnicity. (via the convergence of "White (Unknown)" "White (All Ethnicities"")) 
+- This change seems to have significantly altered the number of non-hispanic whites that were reported after 1987.
+- Asian / Pacific Islander and Native American races account for a very small number of murders each year (<500) for both groups in any measured year.
+- A significant increase in white and black victims was measured starting around 1985 and peaking in the early 1990's.
+- Although all murders for all ethnicities have decreased or remained somewhat constant, it looks like there has been a decline in "White (Unknown)" victims which looks to be met with a small cooresponding increase in "White (Hispanic)" and "White (Non-Hispanic" victims. 
+
+
+
+# 7) Violin Plot Analysis of Weapon Type by Age and Gender
+
+Violin plots are a great way to visualize how the distributions quantatative variable (victim.age, perpetrator. age) change between observations within a single categorical variable (e.eg race, weapon type, etc.).
+
+First  we'll investigate the distribution of age data, as it pertains to the victims and perpetrators of different weapon types:
+
+
+
+# 7.a) Firearm Weapon I; Victims by Age and Gender:
+
+```{r Firearm Weapon I; Victims by Age and Gender:}
+
+
+
+
+target <- subset(df.solved, df.solved$weapon == "Firearm"  |  df.solved$weapon == "Gun"  |  df.solved$weapon == "Handgun" | df.solved$weapon == "Rifle" | df.solved$weapon == "Shotgun" )
+
+target.female <- subset(target, target$victim.sex == "Female")
+target.male <- subset(target, target$victim.sex == "Male")
+
+
+
+
+p <- df %>%
+  plot_ly(type = 'violin') %>%
+  add_trace(
+    x = target.male$weapon,
+    y = target.male$victim.age,
+    legendgroup = 'Yes',
+    scalegroup = 'Yes',
+    name = 'Male',
+    side = 'negative',
+    box = list(
+      visible = T
+      
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'blue'
+    )
+  ) %>%
+  
+
+  add_trace(
+    x = target.female$weapon,
+    y = target.female$victim.age,
+    legendgroup = 'No',
+    scalegroup = 'No',
+    name = 'Female',
+    side = 'positive',
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'red'
+    )
+  ) %>% 
+  layout(
+    title = "Firearm Weapon I; Victims by Age and Gender",
+    xaxis = list(
+      title = "weapon type"  
+    ),
+    yaxis = list(
+      title = "Victim's Age",
+      zeroline = F
+    ),
+    violingap = 0,
+    violingroupgap = 0,
+    violinmode = 'overlay'
+  )
+p
+```
+
+
+
+
+
+# 7.b) Non-Firearm Weapon Victims by Age and Gender:
+
+
+```{r Non-Firearm Weapon Victims by Age and Gender:}
+
+
+target <- subset(df.solved, df.solved$weapon == "Blunt Object"  |  df.solved$weapon == "Drowning"  |  df.solved$weapon == "Drugs" | df.solved$weapon == "Explosives" | df.solved$weapon == "Fall" )
+
+target.female <- subset(target, target$victim.sex == "Female")
+target.male <- subset(target, target$victim.sex == "Male")
+
+
+p <- df %>%
+  plot_ly(type = 'violin') %>%
+  add_trace(
+    x = target.male$weapon,
+    y = target.male$victim.age,
+    legendgroup = 'Yes',
+    scalegroup = 'Yes',
+    name = 'Male',
+    side = 'negative',
+    box = list(
+      visible = T
+      
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'blue'
+    )
+  ) %>%
+  
+
+  add_trace(
+    x = target.female$weapon,
+    y = target.female$victim.age,
+    legendgroup = 'No',
+    scalegroup = 'No',
+    name = 'Female',
+    side = 'positive',
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'red'
+    )
+  ) %>% 
+  layout(
+    title = "Non-Firearm Weapon I; Victims by Age and Gender",
+    xaxis = list(
+      title = "Weapon Type"  
+    ),
+    yaxis = list(
+      title = "Victim's Age",
+      zeroline = F
+    ),
+    violingap = 0,
+    violingroupgap = 0,
+    violinmode = 'overlay'
+  )
+p
+```
+
+
+
+
+# 7.c) Violin Plot Non-Firearm Weapons II; Victims by Age and Gender:
+
+
+
+```{r Violin Plot Non-Firearm Weapons II; Victims by Age and Gender:}
+
+
+target <- subset(df.solved, df.solved$weapon == "Fire"  |  df.solved$weapon == "Knife"  |  df.solved$weapon == "Poison" | df.solved$weapon == "Strangulation" | df.solved$weapon == "Suffocation" )
+
+
+target.female <- subset(target, target$victim.sex == "Female")
+target.male <- subset(target, target$victim.sex == "Male")
+
+
+p <- df %>%
+  plot_ly(type = 'violin') %>%
+  add_trace(
+    x = target.male$weapon,
+    y = target.male$victim.age,
+    legendgroup = 'Yes',
+    scalegroup = 'Yes',
+    name = 'Male',
+    side = 'negative',
+    box = list(
+      visible = T
+      
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'blue'
+    )
+  ) %>%
+  
+
+  add_trace(
+    x = target.female$weapon,
+    y = target.female$victim.age,
+    legendgroup = 'No',
+    scalegroup = 'No',
+    name = 'Female',
+    side = 'positive',
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'red'
+    )
+  ) %>% 
+  layout(
+    title = "Non-Firearm Weapons II; Victims by Age and Gender",
+    xaxis = list(
+      title = "Weapon Type"  
+    ),
+    yaxis = list(
+      title = "victim's age",
+      zeroline = F
+    ),
+    violingap = 0,
+    violingroupgap = 0,
+    violinmode = 'overlay'
+  )
+p
+```
+
+
+
+
+
+# 7.d) Age Distribution of Firearm Weapon Perpetrators by Gender:
+
+```{r Age Distribution of Firearm Weapon Perpetrators by Gender:}
+
+
+
+
+target <- subset(df.solved, df.solved$weapon == "Firearm"  |  df.solved$weapon == "Gun"  |  df.solved$weapon == "Handgun" | df.solved$weapon == "Rifle" | df.solved$weapon == "Shotgun" )
+
+target.female <- subset(target, target$perpetrator.sex == "Female")
+target.male <- subset(target, target$perpetrator.sex == "Male")
+
+
+
+
+p <- df %>%
+  plot_ly(type = 'violin') %>%
+  add_trace(
+    x = target.male$weapon,
+    y = target.male$perpetrator.age,
+    legendgroup = 'Yes',
+    scalegroup = 'Yes',
+    name = 'Male',
+    side = 'negative',
+    box = list(
+      visible = T
+      
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'blue'
+    )
+  ) %>%
+  
+
+  add_trace(
+    x = target.female$weapon,
+    y = target.female$perpetrator.age,
+    legendgroup = 'No',
+    scalegroup = 'No',
+    name = 'Female',
+    side = 'positive',
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'red'
+    )
+  ) %>% 
+  layout(
+    title = "Age Distribution of Firearm Weapon Perpetrators by Gender",
+    xaxis = list(
+      title = "weapon type"  
+    ),
+    yaxis = list(
+      title = "Perp's Age",
+      zeroline = F
+    ),
+    violingap = 0,
+    violingroupgap = 0,
+    violinmode = 'overlay'
+  )
+p
+```
+
+
+
+
+
+
+# 7.e) Age Distribution of Non-Firearm Weapon (i) Perpetrators by Gender:
+
+```{r Age Distribution of Non-Firearm Weapon (i) Perpetrators by Gender}
+
+
+target <- subset(df.solved, df.solved$weapon == "Blunt Object"  |  df.solved$weapon == "Drowning"  |  df.solved$weapon == "Drugs" | df.solved$weapon == "Explosives" | df.solved$weapon == "Fall" )
+
+target.female <- subset(target, target$perpetrator.sex == "Female")
+target.male <- subset(target, target$perpetrator.sex == "Male")
+
+
+p <- df %>%
+  plot_ly(type = 'violin') %>%
+  add_trace(
+    x = target.male$weapon,
+    y = target.male$perpetrator.age,
+    legendgroup = 'Yes',
+    scalegroup = 'Yes',
+    name = 'Male',
+    side = 'negative',
+    box = list(
+      visible = T
+      
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'blue'
+    )
+  ) %>%
+  
+
+  add_trace(
+    x = target.female$weapon,
+    y = target.female$perpetrator.age,
+    legendgroup = 'No',
+    scalegroup = 'No',
+    name = 'Female',
+    side = 'positive',
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'red'
+    )
+  ) %>% 
+  layout(
+    title = "# Age Distribution of Non-Firearm Weapon (i) Perpetrators by Gender
+",
+    xaxis = list(
+      title = "Weapon Type"  
+    ),
+    yaxis = list(
+      title = "Victim's Age",
+      zeroline = F
+    ),
+    violingap = 0,
+    violingroupgap = 0,
+    violinmode = 'overlay'
+  )
+p
+```
+
+
+
+
+# 7.f) Age Distribution of Non-Firearm Weapon (ii) Perpetrators by Gender:
+
+
+```{r Age Distribution of Non-Firearm Weapon (ii) Perpetrators by Gender:}
+
+
+# IDK how to limit in a sleeker way, so imma try doing this
+
+
+
+target <- subset(df.solved, df.solved$weapon == "Fire"  |  df.solved$weapon == "Knife"  |  df.solved$weapon == "Poison" | df.solved$weapon == "Strangulation" | df.solved$weapon == "Suffocation" )
+
+
+target.female <- subset(target, target$perpetrator.sex == "Female")
+target.male <- subset(target,   target$perpetrator.sex == "Male")
+
+
+p <- df %>%
+  plot_ly(type = 'violin') %>%
+  add_trace(
+    x = target.male$weapon,
+    y = target.male$perpetrator.age,
+    legendgroup = 'Yes',
+    scalegroup = 'Yes',
+    name = 'Male',
+    side = 'negative',
+    box = list(
+      visible = T
+      
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'blue'
+    )
+  ) %>%
+  
+
+  add_trace(
+    x = target.female$weapon,
+    y = target.female$perpetrator.age,
+    legendgroup = 'No',
+    scalegroup = 'No',
+    name = 'Female',
+    side = 'positive',
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'red'
+    )
+  ) %>% 
+  layout(
+    title = "Age Distribution of Non-Firearm Weapon (ii) Perpetrators by Gender
+",
+    xaxis = list(
+      title = "weapon type"  
+    ),
+    yaxis = list(
+      title = "Perp's Age",
+      zeroline = F
+    ),
+    violingap = 0,
+    violingroupgap = 0,
+    violinmode = 'overlay'
+  )
+p
+```
+
+
+
+
+
+# Victim-Side Analysis:
+
+- Weapon types with wider distribution of younger agest (0 - 10) represent murder types that are more common agains infants and children (mainly blunt objects, drowning and suffocation)
+-
+
+
+# Perpatrator-Side Analysis:
+
+- A large majority of perp ages falls above the age of 15 (which makes sense, becauase most murders are commited by adults)
+- Male handgun murders tend maximize during the 18 - 25 range, compared with females, who are much more spread out related to ages
+- There is a pronounced spike in infant-murder methods (blunt objects, drowning, suffocation) during the 18 - 25 year range for women.
+
+
+That worked pretty well.  Lets try something similar, but insted of splitting by weapon type and gender, lets split by relationship and victim/perp.
+
+Because there's 67 individual "detailed.relationship" categories that I've hard-coed, it takes 13 different 5-plot charts to actually visualize all charts.  I'll everyone a big favor and instead of rendering them all here, I'll just group some visually distinguising categories together.  
+
+
+
+# 8.a) Child Killed by Parent:
+
+```{r B1 Child Killed by Parent}
+
+
+target <- filter(df.solved, df.solved$detailed.relationship == "Male Killed by Father" |
+       df.solved$detailed.relationship == "Male Killed by Mother" |
+       df.solved$detailed.relationship == "Female Killed by Father" |
+       df.solved$detailed.relationship == "Female Killed by Mother" 
+       )
+
+table(target$detailed.relationship)
+
+p <- df %>%
+  plot_ly(type = 'violin') %>%
+  add_trace(
+    x = target$detailed.relationship,
+    y = target$perpetrator.age,
+    legendgroup = 'Yes',
+    scalegroup = 'Yes',
+    name = 'Perp',
+    side = 'negative',
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'orange'
+    )
+  ) %>%
+  
+  add_trace(
+    x = target$detailed.relationship,
+    y = target$victim.age,
+    legendgroup = 'No',
+    scalegroup = 'No',
+    name = 'Victim',
+    side = 'positive',
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'teal'
+    )
+  ) %>% 
+  layout(
+    title = "Child Killed By Parent",
+    xaxis = list(
+      title = ""  
+    ),
+    yaxis = list(
+      title = "Victim's Age",
+      zeroline = F
+    ),
+    violingap = 0,
+    violingroupgap = 0,
+    violinmode = 'overlay'
+  )
+p
+```
+
+
+OK, Interesting:
+
+- Since humans hit puberty around the ages 12 - 14, there needs to be a minimum of that range between the age of the parent and their child.  
+- The significant spread on the "Male Killed by Male" category (mean of 13.34, vs a mean of 6.9 - 9.4 for the other categories) shows that this relationship is a mix of adult v infant and adult v adult murders.  (whereas the others are mainly adult v infant).
+
+
+#8.b) Child-Killed by Step Parent:
+
+```{r B1 Child Killed by Step-Parent}
+
+target <- filter(df.solved, df.solved$detailed.relationship == "Male Killed by Stepfather" |
+       df.solved$detailed.relationship == "Male Killed by Stepmother" |
+       df.solved$detailed.relationship == "Female Killed by Stepfather" |
+       df.solved$detailed.relationship == "Female Killed by Stepmother" 
+       )
+
+p <- df %>%
+  plot_ly(type = 'violin') %>%
+  add_trace(
+    x = target$detailed.relationship,
+    y = target$perpetrator.age,
+    legendgroup = 'Yes',
+    scalegroup = 'Yes',
+    name = 'Perp',
+    side = 'negative',
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'orange'
+    )
+  ) %>%
+  
+  add_trace(
+    x = target$detailed.relationship,
+    y = target$victim.age,
+    legendgroup = 'No',
+    scalegroup = 'No',
+    name = 'Victim',
+    side = 'positive',
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'teal'
+    )
+  ) %>% 
+  layout(
+    title = "Child Killed By Step-Parent",
+    xaxis = list(
+      title = ""  
+    ),
+    yaxis = list(
+      title = "Victim's Age",
+      zeroline = F
+    ),
+    violingap = 0,
+    violingroupgap = 0,
+    violinmode = 'overlay'
+  )
+p
+```
+
+
+Yup, similar to the parent category.  Note how this time the mean perpetrator age and main victim age is notched up a bit more that in the previous cases.  This makes sense, since you it would require each perpetrator to have gone through two marriages since the time of the incident.
+
+
+#8.c) Spouse Killed by Spouse:
+
+```{r B3 Spouse Killed by Spouse}
+
+table(df.solved$detailed.relationship)
+
+target <- filter(df.solved, df.solved$detailed.relationship == "Male Killed by Wife" |   # Note that the 'w' is not capitalized
+       df.solved$detailed.relationship == "Male Killed by Husband" |                     # If this stops working on the next restart, cap it to fix 
+       df.solved$detailed.relationship == "Female Killed by Wife" |                  
+       df.solved$detailed.relationship == "Female Killed by Husband" 
+       )
+
+p <- df %>%
+  plot_ly(type = 'violin') %>%
+  add_trace(
+    x = target$detailed.relationship,
+    y = target$perpetrator.age,
+    legendgroup = 'Yes',
+    scalegroup = 'Yes',
+    name = 'Perp',
+    side = 'negative',
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'orange'
+    )
+  ) %>%
+  
+  add_trace(
+    x = target$detailed.relationship,
+    y = target$victim.age,
+    legendgroup = 'No',
+    scalegroup = 'No',
+    name = 'Victim',
+    side = 'positive',
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'teal'
+    )
+  ) %>% 
+  layout(
+    title = "Spouse Killed by Spouse",
+    xaxis = list(
+      title = ""  
+    ),
+    yaxis = list(
+      title = "Victim's Age",
+      zeroline = F
+    ),
+    violingap = 0,
+    violingroupgap = 0,
+    violinmode = 'overlay'
+  )
+p
+```
+
+
+
+#8.d) Parent Killed by Child:
+
+```{r B3 Parent Killed by Child}
+
+table(df.solved$detailed.relationship)
+
+target <- filter(df.solved, df.solved$detailed.relationship == "Male Killed by Son" |   
+       df.solved$detailed.relationship == "Male Killed by Daughter" |                    
+       df.solved$detailed.relationship == "Female Killed by Son" |                  
+       df.solved$detailed.relationship == "Female Killed by Daughter" 
+       )
+
+
+p <- df %>%
+  plot_ly(type = 'violin') %>%
+  add_trace(
+    x = target$detailed.relationship,
+    y = target$perpetrator.age,
+    legendgroup = 'Yes',
+    scalegroup = 'Yes',
+    name = 'Perp',
+    side = 'negative',
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'orange'
+    )
+  ) %>%
+  
+  add_trace(
+    x = target$detailed.relationship,
+    y = target$victim.age,
+    legendgroup = 'No',
+    scalegroup = 'No',
+    name = 'Victim',
+    side = 'positive',
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'teal'
+    )
+  ) %>% 
+  layout(
+    title = "Parent Killed by Child",
+    xaxis = list(
+      title = ""  
+    ),
+    yaxis = list(
+      title = "Victim's Age",
+      zeroline = F
+    ),
+    violingap = 0,
+    violingroupgap = 0,
+    violinmode = 'overlay'
+  )
+p
+```
+
+
+Notes:
+
+- We see a similar age differential between the victim and parent.
+- The median for the perpetrator is about 20 - 25, whereas the parents median is around ages 50-70.
+- The bottom victim-side end on the fourth chart, likley stems from typos from the reporting department.  (We cant really have a parent of age zero) 
+
+
+
+# 8.f) Individual Killed by Stranger:
+
+
+```{r B3 Individual Killed by Stranger}
+
+target <- filter(df.solved, df.solved$detailed.relationship == "Male Killed by Male Stranger" |   
+       df.solved$detailed.relationship == "Male Killed by Female Stranger" |                    
+       df.solved$detailed.relationship == "Female Killed by Male Stranger" |                  
+       df.solved$detailed.relationship == "Female Killed by Female Stranger" 
+       )
+
+p <- df %>%
+  plot_ly(type = 'violin') %>%
+  add_trace(
+    x = target$detailed.relationship,
+    y = target$perpetrator.age,
+    legendgroup = 'Yes',
+    scalegroup = 'Yes',
+    name = 'Perp',
+    side = 'negative',
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'orange'
+    )
+  ) %>%
+  
+  add_trace(
+    x = target$detailed.relationship,
+    y = target$victim.age,
+    legendgroup = 'No',
+    scalegroup = 'No',
+    name = 'Victim',
+    side = 'positive',
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'teal'
+    )
+  ) %>% 
+  layout(
+    title = "Individual Killed by Stranger",
+    xaxis = list(
+      title = ""  
+    ),
+    yaxis = list(
+      title = "Victim's Age",
+      zeroline = F
+    ),
+    violingap = 0,
+    violingroupgap = 0,
+    violinmode = 'overlay'
+  )
+p
+```
+
+
+
+
+# 8.g) Individual Killed by Acquaintance:
+
+```{r B3 Individual Killed by Acquantiance}
+
+table(df.solved$detailed.relationship)
+
+target <- filter(df.solved, df.solved$detailed.relationship == "Male Killed by Male Acquaintance" |   
+       df.solved$detailed.relationship == "Male Killed by Female Acquaintance" |                    
+       df.solved$detailed.relationship == "Female Killed by Male Acquaintance" |                  
+       df.solved$detailed.relationship == "Female Killed by Female Acquaintance" 
+       )
+
+
+p <- df %>%
+  plot_ly(type = 'violin') %>%
+  add_trace(
+    x = target$detailed.relationship,
+    y = target$perpetrator.age,
+    legendgroup = 'Yes',
+    scalegroup = 'Yes',
+    name = 'Perp',
+    side = 'negative',
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'orange'
+    )
+  ) %>%
+  
+  add_trace(
+    x = target$detailed.relationship,
+    y = target$victim.age,
+    legendgroup = 'No',
+    scalegroup = 'No',
+    name = 'Victim',
+    side = 'positive',
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'teal'
+    )
+  ) %>% 
+  layout(
+    title = "Killed by Stranger",
+    xaxis = list(
+      title = ""  
+    ),
+    yaxis = list(
+      title = "Victim's Age",
+      zeroline = F
+    ),
+    violingap = 0,
+    violingroupgap = 0,
+    violinmode = 'overlay'
+  )
+p
+```
+
+
+
+
+
+
+
+# 8.h)  Individual Killed by Friend
+
+```{r B3 Individual Killed by Friend}
+
+
+target <- filter(df.solved, df.solved$detailed.relationship == "Male Killed by Male Friend" |   
+       df.solved$detailed.relationship == "Male Killed by Female Friend" |                    
+       df.solved$detailed.relationship == "Female Killed by Male Friend" |                  
+       df.solved$detailed.relationship == "Female Killed by Female Friend" 
+       )
+
+
+p <- df %>%
+  plot_ly(type = 'violin') %>%
+  add_trace(
+    x = target$detailed.relationship,
+    y = target$perpetrator.age,
+    legendgroup = 'Yes',
+    scalegroup = 'Yes',
+    name = 'Perp',
+    side = 'negative',
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'orange'
+    )
+  ) %>%
+  
+  add_trace(
+    x = target$detailed.relationship,
+    y = target$victim.age,
+    legendgroup = 'No',
+    scalegroup = 'No',
+    name = 'Victim',
+    side = 'positive',
+    box = list(
+      visible = T
+    ),
+    meanline = list(
+      visible = T
+    ),
+    line = list(
+      color = 'teal'
+    )
+  ) %>% 
+  layout(
+    title = "Killed by Friend",
+    xaxis = list(
+      title = ""  
+    ),
+    yaxis = list(
+      title = "Victim's Age",
+      zeroline = F
+    ),
+    violingap = 0,
+    violingroupgap = 0,
+    violinmode = 'overlay'
+  )
+p
+```
+
+
+I'm sure we're all tired of violin plots by now. Last, lets take a look at some of the information on a city-level.  Ideally I would have liked to provide a county level choropleth analysis (using a dictionary to map county names with fips codes), but unfortunately Plotly only provides this feature exclusively for the Python language.
+
+Anyways, as a final analysis, let's look at the number of murders historically on a city-wide basis.  This analysis could be performed on thousands of cities, but for this demonstration, I'll focus on some of the highest population cities in the US (NYC, LA, Chicago, etc.)
+
+
+
+
+
+
+
+# 9.a) Annual Murders in New York City:
+
+```{r C1 }
+
+nrow(subset(df.solved, df.solved$city.state == "New York , NY" & df.solved$year == 1980))
+solved.murders.per.year <- table(df.solved$city.state == "New York , NY", df.solved$year)
+solved.murders.per.year <- solved.murders.per.year[2,]
+
+unsolved.murders.per.year <- table(df.unsolved$city.state == "New York , NY", df.unsolved$year)
+unsolved.murders.per.year <- unsolved.murders.per.year[2,]
+
+years <- c(1980:2014)
+solved <- c(solved.murders.per.year)
+unsolved <- c(unsolved.murders.per.year)
+data <- data.frame(years, solved, unsolved)
+
+
+p <- plot_ly(data, x = ~years, y = ~solved, type = 'bar', name = 'Solved Cases') %>%
+  add_trace(y = ~unsolved, name = 'Unsolved Cases') %>%
+  layout(yaxis = list(title = 'Total Murders per Year', range = c(0,2000)), barmode = 'stack')
+p
+
+```
+
+OK, interesting... We see a similar decrease in murders over the last 30 years, similar to what we had seen in raw aggregate numbers. 
+
+
+
+# 9.b) Annual Murders in Los Angeles, CA:
+
+```{r}
+
+solved.murders.per.year <- table(df.solved$year)
+
+solved.murders.per.year <- table(df.solved$city.state == "Los Angeles , CA", df.solved$year)
+solved.murders.per.year <- solved.murders.per.year[2,]
+
+unsolved.murders.per.year <- table(df.unsolved$city.state == "Los Angeles , CA", df.unsolved$year)
+unsolved.murders.per.year <- unsolved.murders.per.year[2,]
+
+years <- c(1980:2014)
+solved <- c(solved.murders.per.year)
+unsolved <- c(unsolved.murders.per.year)
+data <- data.frame(years, solved, unsolved)
+
+
+p <- plot_ly(data, x = ~years, y = ~solved, type = 'bar', name = 'Solved Cases') %>%
+  add_trace(y = ~unsolved, name = 'Unsolved Cases') %>%
+  layout(yaxis = list(title = 'Murders per Year', range = c(0,2000)), barmode = 'stack')
+p
+
+```
+
+OK, very similar to what we probabbly should have expected... And now for Chicago...
+
+
+# 9.c) Annual Murders in Chicago, IL:
+
+
+```{r}
+
+solved.murders.per.year <- table(df.solved$year)
+
+
+solved.murders.per.year <- table(df.solved$city.state == "Cook , IL", df.solved$year)
+solved.murders.per.year <- solved.murders.per.year[2,]
+
+unsolved.murders.per.year <- table(df.unsolved$city.state == "Cook , IL", df.unsolved$year)
+unsolved.murders.per.year <- unsolved.murders.per.year[2,]
+
+
+years <- c(1980:2014)
+solved <- c(solved.murders.per.year)
+unsolved <- c(unsolved.murders.per.year)
+data <- data.frame(years, solved, unsolved)
+
+
+p <- plot_ly(data, x = ~years, y = ~solved, type = 'bar', name = 'Solved Cases') %>%
+  add_trace(y = ~unsolved, name = 'Unsolved Cases') %>%
+  layout(title= "Historical Murder Rate in Chicago", yaxis = list(title = 'Murders per Year', range = c(0,2000)),  barmode = 'stack' )
+p
+
+```
+
+
+
+Well, thats suprising.  Either Chicago had some very crime-free years, or there is a significant amount of information missing misssing for some select years.  OK, last analysis here.  Lets look at the annual murder rate in Boston, MA.  
+
+
+
+
+# 9.d) Annual Murders in Boston, MA:
+
+```{r}
+
+solved.murders.per.year <- table(df.solved$year)
+
+solved.murders.per.year <- table(df.solved$city.state == "Suffolk , MA", df.solved$year)
+solved.murders.per.year <- solved.murders.per.year[2,]
+
+unsolved.murders.per.year <- table(df.unsolved$city.state == "Suffolk , MA", df.unsolved$year)
+unsolved.murders.per.year <- unsolved.murders.per.year[2,]
+
+
+years <- c(1980:2014)
+solved <- c(solved.murders.per.year)
+unsolved <- c(unsolved.murders.per.year)
+data <- data.frame(years, solved, unsolved)
+
+
+p <- plot_ly(data, x = ~years, y = ~solved, type = 'bar', name = 'Solved Cases') %>%
+  add_trace(y = ~unsolved, name = 'Unsolved Cases') %>%
+  layout(yaxis = list(title = 'Murders per Year', range = c(0,200)),  barmode = 'stack' )
+p
+
+```
+
+
+Well, it not a perfectly clear trend, but overall its good to see that murder is on the deline in Boston.  
+
+Ok, thats the conclusion of this EDA of the FBI murder database.  Thanks for reading along.
